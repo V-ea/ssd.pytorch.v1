@@ -90,12 +90,12 @@ class SIXrayDetectionEval(data.Dataset):
     def pull_item(self, index):
         img_id = self.ids[index]
 
-        type_ = "core"
-
-        if osp.exists(osp.join(self.imgpath, "coreless_" + img_id + ".jpg")):
-            type_ = "coreless"
-        img = cv2.imread(osp.join(self.imgpath, type_ + "_" + img_id + ".jpg"))
-        target = open(osp.join(self.annopath, type_ + "_" + img_id + ".txt"),
+        # type_ = "core"
+        import os
+        imgp = [x for x in os.listdir(self.imgpath) if x.find(img_id) != -1]
+        annop = [x for x in os.listdir(self.annopath) if x.find(img_id) != -1]
+        img = cv2.imread(osp.join(self.imgpath, imgp[0]))
+        target = open(osp.join(self.annopath, annop[0]),
                       encoding="utf-8").readlines()
 
         height, width, channels = img.shape
@@ -124,10 +124,9 @@ class SIXrayDetectionEval(data.Dataset):
             PIL img
         '''
         img_id = self.ids[index]
-        type_ = "core"
-        if osp.exists(osp.join(self.imgpath, "coreless_" + img_id + ".jpg")):
-            type_ = "coreless"
-        return cv2.imread(osp.join(self.imgpath, type_ + "_" + img_id + ".jpg"))
+        import os
+        imgp = [x for x in os.listdir(self.imgpath) if x.find(img_id) != -1]
+        return cv2.imread(osp.join(self.imgpath, imgp[0]))
 
 
     def pull_anno(self, index):
@@ -143,10 +142,10 @@ class SIXrayDetectionEval(data.Dataset):
                 eg: ('001718', [('dog', (96, 13, 438, 332))])
         '''
         img_id = self.ids[index]
-        type_ = "core"
-        if osp.exists(osp.join(self.imgpath, "coreless_" + img_id + ".jpg")):
-            type_ = "coreless"
-        target = open(osp.join(self.annopath, type_ + "_" + img_id + ".txt"),
+        import os
+        # imgp = [x for x in os.listdir(self.imgpath) if x.find(img_id) != -1]
+        annop = [x for x in os.listdir(self.annopath) if x.find(img_id) != -1]
+        target = open(osp.join(self.annopath, annop[0]),
                       encoding="utf-8").readlines()
 
         gt = self.target_transform(img_id, target, 1, 1)

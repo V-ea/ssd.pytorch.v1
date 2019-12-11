@@ -1,4 +1,3 @@
-
 from __future__ import print_function
 import torch
 import torch.nn as nn
@@ -39,6 +38,8 @@ parser.add_argument('--imgpath', default="data/SIXRay_test/images/",
                     help='测试图片所在的文件夹路径')
 parser.add_argument('--annopath', default="data/SIXRay_test/anno/",
                     help='测试图片的标注文件所在的文件夹路径')
+parser.add_argument('--result_file', default="data/SIXRay_test/result.txt",
+                    help='最终结果存放在这里')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
 
@@ -54,16 +55,10 @@ if torch.cuda.is_available():
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-# annopath = os.path.join(args.voc_root, 'core_3000', 'Annotation', '%s.txt')
-# annopath2 = os.path.join(args.voc_root, 'coreless_3000', 'Annotation', '%s.txt')
-# imgpath = os.path.join(args.voc_root, 'core_3000', 'Image', '%s.jpg')
-# imgpath2 = os.path.join(args.voc_root, 'coreless_3000', 'Image', '%s.jpg')
-# # imgsetpath = os.path.join(args.voc_root, 'VOC2007', 'ImageSets',
-# #                           'Main', '{:s}.txt')
-# imgsetpath = os.path.join(args.voc_root, 'test.txt')
-
 devkit_path = "./" + 'RESULT'
 set_type = 'test'
+
+
 class Timer(object):
     """A simple timer."""
 
@@ -145,6 +140,15 @@ def get_sixray_results_file_template(image_set, cls):
     return path
 
 
+def get_result_file():
+    # VOCdevkit/VOC2007/results/det_test_aeroplane.txt
+    filedir = os.path.join(devkit_path, 'results')
+    if not os.path.exists(filedir):
+        os.makedirs(filedir)
+    path = os.path.join(filedir, "result.txt")
+    return path
+
+
 def write_voc_results_file(all_boxes, dataset):
     for cls_ind, cls in enumerate(labelmap):
         print('Writing {:s} VOC results file'.format(cls))
@@ -163,39 +167,58 @@ def write_voc_results_file(all_boxes, dataset):
 
 
 def write_sixray_results_file(all_boxes, dataset):
+    f_result = open(get_result_file(), "wt")
     for cls_ind, cls in enumerate(labelmap):
+        f_result.write("================%s===============\n" % cls)
         print('Writing {:s} SIXRAY results file'.format(cls))
         filename = get_sixray_results_file_template(set_type, cls)
         print("Filename: {:s}".format(filename))
+
         with open(filename, 'wt') as f:
             for im_ind, index in enumerate(dataset.ids):
                 dets = all_boxes[cls_ind + 1][im_ind]
+
+                f_result.write('\nGROUND TRUTH FOR: ' + index + '\n')
+                img_id, annotation = dataset.pull_anno(im_ind)
+                for box in annotation:
+                    f_result.write(str(box[-1]) + ' label: ' + labelmap[box[-1]] + ' ' + ' || '.join(str(b) for b in box[:-1]) + '\n')
+                pred_num = 0
+                for k in range(len(dets)):
+                    if dets[k, -1] >= 0.5:
+                        f_result.write('PREDICTIONS: ' + '\n')
+                        score = dets[k, -1]
+                        label_name = cls
+                        coords = (dets[k, 0], dets[k, 1], dets[k, 2], dets[k, 3])
+                        f_result.write(str(cls_ind) + ' label: ' + label_name  + ' ' + ' || '.join(str(c) for c in coords) +  ' score: ' +
+                                            str(score) + '\n')
+
                 if dets == []:
                     continue
                 # the VOCdevkit expects 1-based indices
                 for k in range(dets.shape[0]):
                     f.write('{:s} {:.3f} {:.1f} {:.1f} {:.1f} {:.1f}\n'.
                             format(index, dets[k, -1],
-                                   dets[k, 0] + 1, dets[k, 1] + 1,
-                                   dets[k, 2] + 1, dets[k, 3] + 1))
+                                   dets[k, 0], dets[k, 1],
+                                   dets[k, 2], dets[k, 3]))
+
 
 
 # def do_python_eval(output_dir='output', use_07=True):
-def do_python_eval(output_dir='output'):
-    cachedir = os.path.join(devkit_path, 'annotations_cache')
+def do_python_eval():
+    # cachedir = os.path.join(devkit_path, 'annotations_cache')
     aps = []
-    if not os.path.isdir(output_dir):
-        os.mkdir(output_dir)
+    # if not os.path.isdir(output_dir):
+    #     os.mkdir(output_dir)
     for i, cls in enumerate(labelmap):
         # 每个分类的预测框所在的文件
         filename = get_sixray_results_file_template(set_type, cls)
         rec, prec, ap = sixray_eval(
-            filename, args.annopath, args.imgpath, args.imagesetfile, cls, cachedir,
+            filename, args.annopath, args.imgpath, args.imagesetfile, cls,
             ovthresh=0.5)
         aps += [ap]
         print('AP for {} = {:.4f}'.format(cls, ap))
-        with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
-            pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
+        # with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
+        #     pickle.dump({'rec': rec, 'prec': prec, 'ap': ap}, f)
     print('Mean AP = {:.4f}'.format(np.mean(aps)))
     print('~~~~~~~~')
     print('Results:')
@@ -239,7 +262,6 @@ def sixray_eval(detpath,
                 imgpath,
                 imagesetfile,
                 classname,
-                cachedir,
                 ovthresh=0.5,
                 ):
     """rec, prec, ap = voc_eval(detpath,
@@ -265,34 +287,23 @@ cachedir: Directory for caching the annotations
     # assumes imagesetfile is a text file with each line an image name
     # cachedir caches the annotations in a pickle file
     # first load gt
-    if not os.path.isdir(cachedir):
-        os.mkdir(cachedir)
-    cachefile = os.path.join(cachedir, 'annots.pkl')
+    # if not os.path.isdir(cachedir):
+    #     os.mkdir(cachedir)
+    # cachefile = os.path.join(cachedir, 'annots.pkl')
     # read list of images
     with open(imagesetfile, 'r') as f:
         lines = f.readlines()
     # lines = dataset.ids
     imagenames = [x.strip() for x in lines]
-    if not os.path.isfile(cachefile):
-        # load annots
-        recs = {}
-        for i, imagename in enumerate(imagenames):
-            type_ = "core"
-            import os.path as osp
-            if osp.exists(osp.join(args.imgpath, "coreless_" + imagename + ".jpg")):
-                type_ = "coreless"
-            recs[imagename] = parse_rec_sixray(osp.join(args.annopath, type_ + "_" + imagename + ".txt"))
-            if i % 100 == 0:
-                print('Reading annotation for {:d}/{:d}'.format(
-                    i + 1, len(imagenames)))
-        # save
-        print('Saving cached annotations to {:s}'.format(cachefile))
-        with open(cachefile, 'wb') as f:
-            pickle.dump(recs, f)
-    else:
-        # load
-        with open(cachefile, 'rb') as f:
-            recs = pickle.load(f)
+    # load annots
+    recs = {}
+    for i, img_id in enumerate(imagenames):
+        annop = [x for x in os.listdir(annopath) if x.find(img_id) != -1]
+        recs[img_id] = parse_rec_sixray(os.path.join(annopath, annop[0]))
+        if i % 100 == 0:
+            print('Reading annotation for {:d}/{:d}'.format(
+                i + 1, len(imagenames)))
+
 
     # extract gt objects for this class
     class_recs = {}
@@ -388,8 +399,8 @@ def test_net(net, dataset, transform):
 
     # timers
     _t = {'im_detect': Timer(), 'misc': Timer()}
-    output_dir = get_output_dir('ssd300_120000', set_type)
-    det_file = os.path.join(output_dir, 'detections.pkl')
+    # output_dir = get_output_dir('ssd300_120000', set_type)
+    # det_file = os.path.join(output_dir, 'detections.pkl')
 
     for i in range(num_images):
         im, gt, h, w = dataset.pull_item(i)
@@ -422,16 +433,16 @@ def test_net(net, dataset, transform):
         print('im_detect: {:d}/{:d} {:.3f}s'.format(i + 1,
                                                     num_images, detect_time))
 
-    with open(det_file, 'wb') as f:
-        pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
+    # with open(det_file, 'wb') as f:
+    #     pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 
     print('Evaluating detections')
-    evaluate_detections(all_boxes, output_dir, dataset)
+    evaluate_detections(all_boxes, dataset)
 
 
-def evaluate_detections(box_list, output_dir, dataset):
+def evaluate_detections(box_list, dataset):
     write_sixray_results_file(box_list, dataset)
-    do_python_eval(output_dir)
+    do_python_eval()
 
 
 if __name__ == '__main__':
@@ -452,11 +463,10 @@ if __name__ == '__main__':
     # set_type = 'test'
     dataset = SIXrayDetectionEval(imgpath=args.imgpath, annopath=args.annopath,
                                   images_set_file=args.imagesetfile,
-                              transform=BaseTransform(300, dataset_mean),
-                              target_transform=SIXrayAnnotationTransform())
+                                  transform=BaseTransform(300, dataset_mean),
+                                  target_transform=SIXrayAnnotationTransform())
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True
     # evaluation
     test_net(net, dataset, BaseTransform(net.size, dataset_mean))
-
