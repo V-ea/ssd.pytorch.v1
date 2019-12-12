@@ -74,10 +74,17 @@ class SIXrayDetectionEval(data.Dataset):
         self.target_transform = target_transform
         self.name = "SIXRay"
         self.ids = list()
-        with open(images_set_file, "r") as f:
-            lines = f.readlines()
-        for line in lines:
-            self.ids.append(line.replace("\n", ""))
+        if images_set_file:
+            with open(images_set_file, "r") as f:
+                lines = f.readlines()
+            for line in lines:
+                self.ids.append(line.replace("\n", ""))
+        else:
+            import os
+            files = os.listdir(self.imgpath)
+            for f in files:
+                self.ids.append(f.replace(".jpg", "").replace("coreless_", "").replace("core_", ""))
+
 
     def __getitem__(self, index):
         im, gt, h, w = self.pull_item(index)

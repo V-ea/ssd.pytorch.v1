@@ -31,9 +31,9 @@ parser.add_argument('--trained_model',
                     help='Trained state_dict file path to open')
 parser.add_argument('--cuda', default=False, type=str2bool,
                     help='Use cuda to train model')
-parser.add_argument('--imagesetfile', default="data/SIXRay_test/test.txt",
+parser.add_argument('--imagesetfile', default=None,
                     # parser.add_argument('--voc_root', default=VOC_ROOT,
-                    help='测试文件的输入包含一个txt文件（里面全是测试集合的图片名）')
+                    help='测试文件的输入包含一个txt文件（里面全是测试集合的图片名），为None时就验证所有imgpath中的图片')
 parser.add_argument('--imgpath', default="data/SIXRay_test/images/",
                     help='测试图片所在的文件夹路径')
 parser.add_argument('--annopath', default="data/SIXRay_test/anno/",
@@ -204,7 +204,7 @@ def write_sixray_results_file(all_boxes, dataset):
 
 
 # def do_python_eval(output_dir='output', use_07=True):
-def do_python_eval():
+def do_python_eval(dataset):
     # cachedir = os.path.join(devkit_path, 'annotations_cache')
     aps = []
     # if not os.path.isdir(output_dir):
@@ -214,7 +214,7 @@ def do_python_eval():
         filename = get_sixray_results_file_template(set_type, cls)
         rec, prec, ap = sixray_eval(
             filename, args.annopath, args.imgpath, args.imagesetfile, cls,
-            ovthresh=0.5)
+            ovthresh=0.5, dataset=dataset)
         aps += [ap]
         print('AP for {} = {:.4f}'.format(cls, ap))
         # with open(os.path.join(output_dir, cls + '_pr.pkl'), 'wb') as f:
@@ -263,6 +263,7 @@ def sixray_eval(detpath,
                 imagesetfile,
                 classname,
                 ovthresh=0.5,
+                dataset=None
                 ):
     """rec, prec, ap = voc_eval(detpath,
                            annopath,
@@ -291,9 +292,9 @@ cachedir: Directory for caching the annotations
     #     os.mkdir(cachedir)
     # cachefile = os.path.join(cachedir, 'annots.pkl')
     # read list of images
-    with open(imagesetfile, 'r') as f:
-        lines = f.readlines()
-    # lines = dataset.ids
+    # with open(imagesetfile, 'r') as f:
+    #     lines = f.readlines()
+    lines = dataset.ids
     imagenames = [x.strip() for x in lines]
     # load annots
     recs = {}
@@ -442,7 +443,7 @@ def test_net(net, dataset, transform):
 
 def evaluate_detections(box_list, dataset):
     write_sixray_results_file(box_list, dataset)
-    do_python_eval()
+    do_python_eval(dataset)
 
 
 if __name__ == '__main__':
