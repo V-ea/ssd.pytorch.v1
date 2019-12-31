@@ -70,13 +70,16 @@ class SSD(nn.Module):
         loc = list()
         conf = list()
 
+        # 第23层就是conv4_3这层
         # apply vgg up to conv4_3 relu
         for k in range(23):
             x = self.vgg[k](x)
 
+        # l2norm然后记录到source
         s = self.L2Norm(x)
         sources.append(s)
 
+        # 然后继续到fc7那层记录最后的输出到source
         # apply vgg up to fc7
         for k in range(23, len(self.vgg)):
             x = self.vgg[k](x)
