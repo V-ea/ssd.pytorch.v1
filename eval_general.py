@@ -31,13 +31,13 @@ parser.add_argument('--trained_model',
                     help='Trained state_dict file path to open')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
-parser.add_argument('--imagesetfile', default=None,
-                    # parser.add_argument('--voc_root', default=VOC_ROOT,
-                    help='测试文件的输入包含一个txt文件（里面全是测试集合的图片名），为None时就验证所有imgpath中的图片')
-parser.add_argument('--imgpath', default="data/SIXRay_test/images/",
-                    help='测试图片所在的文件夹路径')
-parser.add_argument('--annopath', default="data/SIXRay_test/anno/",
-                    help='测试图片的标注文件所在的文件夹路径')
+# parser.add_argument('--imagesetfile', default=None,
+#                     # parser.add_argument('--voc_root', default=VOC_ROOT,
+#                     help='测试文件的输入包含一个txt文件（里面全是测试集合的图片名），为None时就验证所有imgpath中的图片')
+# parser.add_argument('--imgpath', default="data/SIXRay_test/images/",
+#                     help='测试图片所在的文件夹路径')
+# parser.add_argument('--annopath', default="data/SIXRay_test/anno/",
+#                     help='测试图片的标注文件所在的文件夹路径')
 parser.add_argument('--result_file', default="data/SIXRay_test/result.txt",
                     help='最终结果存放在这里')
 parser.add_argument('--cleanup', default=True, type=str2bool,
@@ -489,7 +489,7 @@ def test_(imgpath, annopath):
     dataset_mean = (104, 117, 123)
     # set_type = 'test'
     dataset = SIXrayDetectionEval(imgpath=imgpath, annopath=annopath,
-                                  images_set_file=args.imagesetfile,
+                                  images_set_file=None,
                                   transform=BaseTransform(300, dataset_mean),
                                   target_transform=SIXrayAnnotationTransform())
     if args.cuda:
