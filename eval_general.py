@@ -26,10 +26,10 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--trained_model',
-                    default='weights/SIXRAY.pth', type=str,
+                    default='weights/SIXRAY3.pth', type=str,
                     # default='weights/ssd300_mAP_77.43_v2.pth', type=str,
                     help='Trained state_dict file path to open')
-parser.add_argument('--cuda', default=False, type=str2bool,
+parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
 parser.add_argument('--imagesetfile', default=None,
                     # parser.add_argument('--voc_root', default=VOC_ROOT,
@@ -85,24 +85,50 @@ class Timer(object):
             return self.diff
 
 
-def parse_rec_sixray(filename):
+def parse_rec_sixray(img_id, annopath, imgpath):
+    annop = [x for x in os.listdir(annopath) if x.find(img_id) != -1]
+    img = [x for x in os.listdir(imgpath) if x.find(img_id) != -1]
+    filename = os.path.join(annopath, annop[0])
+    imagename1 = os.path.join(imgpath, img[0])
     """ Parse a PASCAL VOC xml file """
     lines = open(filename, mode="r", encoding="utf-8").readlines()
     # strs = line.split(" ")
+    # 还需要同时打开图像，读入图像大小
+    img = cv2.imread(imagename1)
+    # if img is None:
+    #     img = cv2.imread(imagename2)
+    height, width, channels = img.shape
     objects = []
     for obj in lines:
-        strs = obj.split(" ")
+        temp = obj.split(" ")
         obj_struct = {}
-        obj_struct['name'] = "core" if "带电芯充电宝" == strs[1] else "coreless"
+        obj_struct['name'] = "core" if "带电芯充电宝" == temp[1] else "coreless"
         # obj_struct['pose'] = obj.find('pose').text
         obj_struct['truncated'] = 0
         obj_struct['difficult'] = 0
         # bbox = obj.find('bndbox')
-        obj_struct['bbox'] = [int(strs[2]),
-                              int(strs[3]),
-                              int(strs[4]),
-                              int(strs[5]),
-                              ]
+        xmin = int(temp[2])
+        # 只读取V视角的
+        if int(xmin) > width:
+            continue
+        if xmin < 0:
+            xmin = 1
+        ymin = int(temp[3])
+        if ymin < 0:
+            ymin = 1
+        xmax = int(temp[4])
+        if xmax > width:
+            xmax = width - 1
+        ymax = int(temp[5])
+        if ymax > height:
+            ymax = height - 1
+        obj_struct['pose'] = 'Unspecified'
+        obj_struct['truncated'] = 0
+        obj_struct['difficult'] = 0
+        obj_struct['bbox'] = [float(xmin) - 1,
+                              float(ymin) - 1,
+                              float(xmax) - 1,
+                              float(ymax) - 1]
         objects.append(obj_struct)
 
     return objects
@@ -181,7 +207,8 @@ def write_sixray_results_file(all_boxes, dataset):
                 f_result.write('\nGROUND TRUTH FOR: ' + index + '\n')
                 img_id, annotation = dataset.pull_anno(im_ind)
                 for box in annotation:
-                    f_result.write(str(box[-1]) + ' label: ' + labelmap[box[-1]] + ' ' + ' || '.join(str(b) for b in box[:-1]) + '\n')
+                    f_result.write(str(box[-1]) + ' label: ' + labelmap[box[-1]] + ' ' + ' || '.join(
+                        str(b) for b in box[:-1]) + '\n')
                 pred_num = 0
                 for k in range(len(dets)):
                     if dets[k, -1] >= 0.5:
@@ -189,8 +216,9 @@ def write_sixray_results_file(all_boxes, dataset):
                         score = dets[k, -1]
                         label_name = cls
                         coords = (dets[k, 0], dets[k, 1], dets[k, 2], dets[k, 3])
-                        f_result.write(str(cls_ind) + ' label: ' + label_name  + ' ' + ' || '.join(str(c) for c in coords) +  ' score: ' +
-                                            str(score) + '\n')
+                        f_result.write(str(cls_ind) + ' label: ' + label_name + ' ' + ' || '.join(
+                            str(c) for c in coords) + ' score: ' +
+                                       str(score) + '\n')
 
                 if dets == []:
                     continue
@@ -202,9 +230,8 @@ def write_sixray_results_file(all_boxes, dataset):
                                    dets[k, 2], dets[k, 3]))
 
 
-
 # def do_python_eval(output_dir='output', use_07=True):
-def do_python_eval(dataset):
+def do_python_eval(dataset, annopath, imgpath):
     # cachedir = os.path.join(devkit_path, 'annotations_cache')
     aps = []
     # if not os.path.isdir(output_dir):
@@ -213,7 +240,7 @@ def do_python_eval(dataset):
         # 每个分类的预测框所在的文件
         filename = get_sixray_results_file_template(set_type, cls)
         rec, prec, ap = sixray_eval(
-            filename, args.annopath, args.imgpath, args.imagesetfile, cls,
+            filename, annopath, imgpath, "", cls,
             ovthresh=0.5, dataset=dataset)
         aps += [ap]
         print('AP for {} = {:.4f}'.format(cls, ap))
@@ -300,11 +327,10 @@ cachedir: Directory for caching the annotations
     recs = {}
     for i, img_id in enumerate(imagenames):
         annop = [x for x in os.listdir(annopath) if x.find(img_id) != -1]
-        recs[img_id] = parse_rec_sixray(os.path.join(annopath, annop[0]))
+        recs[img_id] = parse_rec_sixray(img_id, annopath, imgpath)
         if i % 100 == 0:
             print('Reading annotation for {:d}/{:d}'.format(
                 i + 1, len(imagenames)))
-
 
     # extract gt objects for this class
     class_recs = {}
@@ -390,7 +416,7 @@ cachedir: Directory for caching the annotations
 
 
 # TODO
-def test_net(net, dataset, transform):
+def test_net(net, dataset, transform, annopath, imgpath):
     num_images = len(dataset)
     # all detections are collected into:
     #    all_boxes[cls][image] = N x 5 array of detections in
@@ -438,15 +464,15 @@ def test_net(net, dataset, transform):
     #     pickle.dump(all_boxes, f, pickle.HIGHEST_PROTOCOL)
 
     print('Evaluating detections')
-    evaluate_detections(all_boxes, dataset)
+    evaluate_detections(all_boxes, dataset, annopath, imgpath)
 
 
-def evaluate_detections(box_list, dataset):
+def evaluate_detections(box_list, dataset, annopath, imgpath):
     write_sixray_results_file(box_list, dataset)
-    do_python_eval(dataset)
+    do_python_eval(dataset, annopath, imgpath)
 
 
-if __name__ == '__main__':
+def test_(imgpath, annopath):
     # load net
     num_classes = len(labelmap) + 1  # +1 for background
     net = build_ssd('test', 300, num_classes)  # initialize SSD
@@ -462,7 +488,7 @@ if __name__ == '__main__':
     #                        VOCAnnotationTransform())
     dataset_mean = (104, 117, 123)
     # set_type = 'test'
-    dataset = SIXrayDetectionEval(imgpath=args.imgpath, annopath=args.annopath,
+    dataset = SIXrayDetectionEval(imgpath=imgpath, annopath=annopath,
                                   images_set_file=args.imagesetfile,
                                   transform=BaseTransform(300, dataset_mean),
                                   target_transform=SIXrayAnnotationTransform())
@@ -470,4 +496,8 @@ if __name__ == '__main__':
         net = net.cuda()
         cudnn.benchmark = True
     # evaluation
-    test_net(net, dataset, BaseTransform(net.size, dataset_mean))
+    test_net(net, dataset, BaseTransform(net.size, dataset_mean), annopath, imgpath)
+
+
+if __name__ == "__main__":
+    test_( r"C:\Work\test\Image_test",r"C:\Work\test\Anno_test")

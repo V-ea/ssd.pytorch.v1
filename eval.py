@@ -37,7 +37,7 @@ def str2bool(v):
 parser = argparse.ArgumentParser(
     description='Single Shot MultiBox Detector Evaluation')
 parser.add_argument('--trained_model',
-                    default='weights/SIXRAY.pth', type=str,
+                    default='weights/SIXRAY3.pth', type=str,
                     # default='weights/ssd300_mAP_77.43_v2.pth', type=str,
                     help='Trained state_dict file path to open')
 parser.add_argument('--save_folder', default='eval/', type=str,
@@ -48,9 +48,9 @@ parser.add_argument('--top_k', default=5, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=False, type=str2bool,
                     help='Use cuda to train model')
-parser.add_argument('--voc_root', default="data/SIXRay/",
-                    # parser.add_argument('--voc_root', default=VOC_ROOT,
-                    help='Location of VOC root directory')
+# parser.add_argument('--voc_root', default="data/SIXRay/",
+#                     # parser.add_argument('--voc_root', default=VOC_ROOT,
+#                     help='Location of VOC root directory')
 parser.add_argument('--cleanup', default=True, type=str2bool,
                     help='Cleanup and remove results files following eval')
 
@@ -69,10 +69,10 @@ if torch.cuda.is_available():
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-annopath = os.path.join(args.voc_root, 'core_3000', 'Annotation', '%s.txt')
-annopath2 = os.path.join(args.voc_root, 'coreless_3000', 'Annotation', '%s.txt')
-imgpath = os.path.join(args.voc_root, 'core_3000', 'Image', '%s.jpg')
-imgpath2 = os.path.join(args.voc_root, 'coreless_3000', 'Image', '%s.jpg')
+# annopath = os.path.join(args.voc_root, 'core_3000', 'Annotation', '%s.txt')
+# annopath2 = os.path.join(args.voc_root, 'coreless_3000', 'Annotation', '%s.txt')
+# imgpath = os.path.join(args.voc_root, 'core_3000', 'Image', '%s.jpg')
+# imgpath2 = os.path.join(args.voc_root, 'coreless_3000', 'Image', '%s.jpg')
 # imgsetpath = os.path.join(args.voc_root, 'VOC2007', 'ImageSets',
 #                           'Main', '{:s}.txt')
 imgsetpath = os.path.join(args.voc_root, 'test.txt')
@@ -129,24 +129,48 @@ class Timer(object):
 #     return objects
 
 
-def parse_rec_sixray(filename):
+def parse_rec_sixray(imagename, type_):
+    filename = "data/SIXRay/%s_3000/Annotation/%s.txt" % (type_, imagename)
+    imagename1 = "data/SIXRay/%s_3000/Images/%s.jpg" % (type_, imagename)
     """ Parse a PASCAL VOC xml file """
     lines = open(filename, mode="r", encoding="utf-8").readlines()
     # strs = line.split(" ")
+    # 还需要同时打开图像，读入图像大小
+    img = cv2.imread(imagename1)
+    # if img is None:
+    #     img = cv2.imread(imagename2)
+    height, width, channels = img.shape
     objects = []
     for obj in lines:
-        strs = obj.split(" ")
+        temp = obj.split(" ")
         obj_struct = {}
-        obj_struct['name'] = "core" if "带电芯充电宝" == strs[1] else "coreless"
+        obj_struct['name'] = "core" if "带电芯充电宝" == temp[1] else "coreless"
         # obj_struct['pose'] = obj.find('pose').text
         obj_struct['truncated'] = 0
         obj_struct['difficult'] = 0
         # bbox = obj.find('bndbox')
-        obj_struct['bbox'] = [int(strs[2]),
-                              int(strs[3]),
-                              int(strs[4]),
-                              int(strs[5]),
-                              ]
+        xmin = int(temp[2])
+        # 只读取V视角的
+        if int(xmin) > width:
+            continue
+        if xmin < 0:
+            xmin = 1
+        ymin = int(temp[3])
+        if ymin < 0:
+            ymin = 1
+        xmax = int(temp[4])
+        if xmax > width:
+            xmax = width - 1
+        ymax = int(temp[5])
+        if ymax > height:
+            ymax = height - 1
+        obj_struct['pose'] = 'Unspecified'
+        obj_struct['truncated'] = 0
+        obj_struct['difficult'] = 0
+        obj_struct['bbox'] = [float(xmin) - 1,
+                              float(ymin) - 1,
+                              float(xmax) - 1,
+                              float(ymax) - 1]
         objects.append(obj_struct)
 
     return objects
@@ -493,7 +517,7 @@ cachedir: Directory for caching the annotations
                 type_ = "coreless"
             else:
                 type_ = "core"
-            recs[imagename] = parse_rec_sixray("data/SIXRay/%s_3000/Annotation/%s.txt" % (type_, imagename))
+            recs[imagename] = parse_rec_sixray(imagename, type_)
             if i % 100 == 0:
                 print('Reading annotation for {:d}/{:d}'.format(
                     i + 1, len(imagenames)))
